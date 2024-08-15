@@ -9,20 +9,6 @@
 - **Create Events**: Automatically create events on your calendar using AI-generated data.
 - **AI Integration**: Utilize OpenAI to parse natural language descriptions into structured event data.
 
-## Installation
-1. Clone the repository:
-    ```bash
-    git clone https://github.com/Brandon-c-tech/AI-Calendar-Automation.git
-    ```
-2. Navigate to the project directory:
-    ```bash
-    cd AI-Calendar-Automation
-    ```
-3. Install the required dependencies:
-    ```bash
-    pip install -r requirements.txt
-    ```
-
 ## Usage
 1. **Configure API Parameters**: Replace `<GRANT_ID>`, `<API_KEY>`, and `<CALENDAR_ID>` in the code with your actual Nylas API credentials.
 2. **Run the Script**: Execute the script to interact with your calendar:
