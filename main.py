@@ -65,18 +65,19 @@ def parse_event_description(description):
 
 # Function to build event data from parsed OpenAI output
 def build_event_data(parsed_event):
+    json_parsed_event = json.loads(parsed_event)
     event_data = {
-        "title": parsed_event.title,
+        "title": json_parsed_event['title'],
         "status": "confirmed",
         "busy": True,
-        "participants": [{"name": participant.split()[0], "email": participant} for participant in parsed_event.participants],
-        "description": parsed_event.description,
+        "participants": [{"name": "test user", "email": "test2@test.io"}], # TBD
+        "description": json_parsed_event['description'],
         "when": {
             "object": "timespan",
-            "start_time": 1723683600,  # Replace with actual start time
-            "end_time": 1723687200      # Replace with actual end time
+            "start_time": 1723683600,  # TBD
+            "end_time": 1723687200      # TBD
         },
-        "location": parsed_event.location
+        "location": json_parsed_event['location']
     }
     return event_data
 
