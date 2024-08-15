@@ -18,22 +18,4 @@
 3. **Example**: The script provides functions to:
     - Fetch calendars.
     - Fetch a list of events from a calendar.
-    - Create new calendar events based on AI-generated input.
-
-## Example Code
-```python
-# Example usage
-def calendar_test():
-    calendars = get_calendars(GRANT_ID, API_KEY)
-    print("Calendars:", calendars)
-
-    events = get_events(GRANT_ID, API_KEY, CALENDAR_ID, limit=5)
-    print("Events:", events)
-
-    description = "Alice and Bob are going to a science fair on Friday."
-    parsed_event = parse_event_description(description)
-
-    event_data = build_event_data(parsed_event)
-
-    new_event = create_event(GRANT_ID, API_KEY, CALENDAR_ID, event_data)
-    print("New Event:", new_event)
+    - Create new calendar events based on natural language input.
