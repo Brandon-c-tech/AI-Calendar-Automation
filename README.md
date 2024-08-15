@@ -10,7 +10,7 @@
 - **AI Integration**: Utilize OpenAI to parse natural language descriptions into structured event data.
 
 ## Usage
-1. **Configure API Parameters**: Replace `<GRANT_ID>`, `<API_KEY>`, and `<CALENDAR_ID>` in the code with your actual Nylas API credentials.
+1. **Configure API Parameters**: Replace `<GRANT_ID>`, `<API_KEY>`, and `<CALENDAR_ID>` in the code with your actual Nylas API credentials. Ensure that your environment variable contains the OpenAI API key.
 2. **Run the Script**: Execute the script to interact with your calendar:
     ```bash
     python your_script_name.py
