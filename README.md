@@ -33,13 +33,11 @@ The following Python packages are required to run the project:
     pip install -r requirements.txt
     ```
 
-3. Run the main.py
-
 ## Usage
 1. **Configure API Parameters**: Replace `<GRANT_ID>`, `<API_KEY>`, and `<CALENDAR_ID>` in the code with your actual Nylas API credentials. Ensure that your environment variable contains the OpenAI API key.
 2. **Run the Script**: Execute the script to interact with your calendar:
     ```bash
-    python your_script_name.py
+    python main.py
     ```
 3. **Example**: The script provides functions to:
     - Fetch calendars.
