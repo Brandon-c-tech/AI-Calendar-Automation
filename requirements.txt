@@ -1,0 +1,5 @@
+requests
+pydantic
+openai
+python-dateutil
+pytz
