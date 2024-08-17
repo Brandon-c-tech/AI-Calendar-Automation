@@ -7,6 +7,7 @@ import time
 from dateutil import parser
 import pytz
 from typing import List, Dict
+from icalendar import Calendar, Event
 
 # API configuration parameters
 GRANT_ID = "<GRANT_ID>"
@@ -140,6 +141,46 @@ class CalendarEventProcessor:
             "location": parsed_event['location']
         }
         return event_data
+
+# Generate an ICS file using the structured data
+class ICSGenerator:
+    def __init__(self):
+        self.calendar = Calendar()
+
+    def generate_event(self, event_data: Dict) -> Event:
+        # Create an event and add it to the calendar
+        event = Event()
+
+        event.add('summary', event_data['title'])
+        event.add('dtstart', self._parse_datetime(event_data['start_time']))
+        event.add('dtend', self._parse_datetime(event_data['end_time']))
+        event.add('location', event_data.get('location', ''))
+        event.add('description', event_data.get('description', ''))
+
+        for attendee in event_data.get('attendees', []):
+            event.add('attendee', attendee)
+
+        # Validate event logic (example: start time should be before end time)
+        self._validate_event(event)
+
+        self.calendar.add_component(event)
+        return event
+
+    def _parse_datetime(self, date_str: str) -> datetime:
+        # Example parsing datetime with timezone, adjust according to your needs
+        return datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S').replace(tzinfo=pytz.utc)
+
+    def _validate_event(self, event: Event):
+        # Example of validating that the event start time is before the end time
+        dtstart = event.get('dtstart').dt
+        dtend = event.get('dtend').dt
+        if dtstart >= dtend:
+            raise ValueError("Event start time must be before end time")
+
+    def save_to_file(self, filename: str):
+        # Save the calendar to an .ics file
+        with open(filename, 'wb') as f:
+            f.write(self.calendar.to_ical())
 
 # CalendarManager class integrates NylasAPI and CalendarEventProcessor to manage the overall process
 class CalendarManager:
