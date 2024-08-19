@@ -59,11 +59,13 @@ class OpenAIClient:
         self.client = OpenAI()
 
     def parse_event_description(self, description: str) -> Dict:
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S") #TBD
         # Parses the event description to extract structured event details using OpenAI
+        system_message = f"Extract the event details based on the following structure: title, description, when, location, and participants. The current date and time is {current_time}. Please ensure WHEN is a date or time description that can be converted into a standard date format. Missing parts fill with 'unknown'."
         completion = self.client.beta.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "Extract the event details based on the following structure: title, description, when, location, and participants. Please ensure WHEN is a date or time description that can be converted into a standard date format. Missing parts fill with 'unknown'"},
+                {"role": "system", "content": system_message},
                 {"role": "user", "content": description},
             ],
             response_format=CalendarEvent
@@ -199,7 +201,7 @@ class CalendarManager:
         # Format the output
         output = f"Title: {title}\n" \
                  f"Participants:\n" + "\n".join([f"  Name: {name}, Email: {email}" for name, email in participants]) + "\n" \
-                 f"Start Time: {start_time}\n" \
+                 f"Start Time (UTC): {start_time}\n" \ #TBD
                  f"Location: {location}\n" \
                  f"Description: {description}"
         
