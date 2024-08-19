@@ -188,6 +188,23 @@ class CalendarManager:
         self.api_client = api_client
         self.event_processor = event_processor
 
+    def readable_event(self, event_data):
+        # Extract relevant information
+        title = event_data['data']['title']
+        participants = [(p['name'], p['email']) for p in event_data['data']['participants']]
+        start_time = datetime.fromtimestamp(event_data['data']['when']['start_time']).strftime('%Y-%m-%d %H:%M:%S')
+        location = event_data['data']['location']
+        description = event_data['data']['description']
+
+        # Format the output
+        output = f"Title: {title}\n" \
+                 f"Participants:\n" + "\n".join([f"  Name: {name}, Email: {email}" for name, email in participants]) + "\n" \
+                 f"Start Time: {start_time}\n" \
+                 f"Location: {location}\n" \
+                 f"Description: {description}"
+        
+        return output
+
     def run_test(self):
         # Example method to demonstrate the workflow: retrieving calendars, processing events, and creating a new event
         calendars = self.api_client.get_calendars()
@@ -208,6 +225,10 @@ class CalendarManager:
         event_data = self.event_processor.build_event_data(parsed_event, emails)
         new_event = self.api_client.create_event(calendar_id=CALENDAR_ID, event_data=event_data)
         print("New Event:", new_event)
+
+        # Format the event readable details and print
+        formatted_event_details = self.readable_event(new_event)
+        print("Readable Event Details:\n", formatted_event_details)
 
 # Usage
 if __name__ == "__main__":
