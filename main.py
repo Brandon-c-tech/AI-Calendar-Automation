@@ -91,6 +91,29 @@ class OpenAIClient:
         )
         return response.choices[0].message.content
 
+    def extract_event_end_time(self, description: str) -> str:
+        pacific_tz = pytz.timezone('America/Los_Angeles')  # TBD to set user's timezone
+        current_time = datetime.now(pacific_tz).strftime("%Y-%m-%d %H:%M:%S")
+        prompt = f"""
+            Extract the end time from the following event description. The current date and time is {current_time}. 
+            If the end time is not explicitly mentioned, try to calculate it based on the current time and the duration mentioned in the description. 
+            Return the result as a string in the JSON format {{"end_time": "YYYY-MM-DD HH:MM:SS"}}.
+            If can't get the end time, return 'unknow'.
+            For example:
+            - If the input is "The current date is 2023-09-15. The meeting will start at 3 PM and end at 4 PM", return {{"end_time": "2023-09-15 16:00:00"}}.
+            - If the input is "The meeting will last for 2 hours", and the current time is "2023-09-15 14:00:00", return {{"end_time": "2023-09-15 16:00:00"}}.
+        """
+        
+        response = self.client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": description}
+            ],
+            response_format={"type": "json_object"}
+        )
+        return response.choices[0].message.content
+
 # CalendarEventProcessor class processes event data and manages participants
 class CalendarEventProcessor:
     def __init__(self, api_client: NylasAPI, openai_client: OpenAIClient):
@@ -104,6 +127,21 @@ class CalendarEventProcessor:
         pacific_time = pacific.localize(parsed_time)
         utc_time = pacific_time.astimezone(pytz.utc)
         return int(utc_time.timestamp())
+
+    def process_start_time(self, parsed_event: Dict):
+        start_time = self.standardize_time(parsed_event['when'])
+        return start_time
+    
+    def process_end_time(self, description: str, start_time: int) -> int:
+        end_time_str = self.openai_client.extract_event_end_time(description)
+        if end_time_str.lower() != 'unknown':
+            try:
+                end_time_timestamp = self.standardize_time(end_time_str)
+                return end_time_timestamp
+            except Exception as e:
+                raise ValueError(f"Error standardizing end time: {e}")
+        else:
+            return start_time + 3600
 
     def process_participants(self, participants_json: str) -> (Dict[str, str], List[str]):
         # Processes participants JSON to extract emails and identify participants without valid emails
@@ -125,9 +163,8 @@ class CalendarEventProcessor:
         except Exception as e:
             raise ValueError(f"Error processing participants: {e}")
 
-    def build_event_data(self, parsed_event: Dict, emails_dict: Dict[str, str]) -> Dict:
+    def build_event_data(self, parsed_event: Dict, emails_dict: Dict[str, str], start_time: int, end_time: int) -> Dict:
         # Constructs the final event data dictionary for creating a new event in the calendar
-        start_time = self.standardize_time(parsed_event['when'])
         participants = [{"name": name, "email": email} for name, email in emails_dict.items()]
         event_data = {
             "title": parsed_event['title'],
@@ -138,7 +175,7 @@ class CalendarEventProcessor:
             "when": {
                 "object": "timespan",
                 "start_time": start_time,
-                "end_time": start_time + 3600
+                "end_time": end_time
             },
             "location": parsed_event['location']
         }
@@ -222,10 +259,13 @@ class CalendarManager:
         # Extract and process participants from the event description
         extracted_participants_raw = self.event_processor.openai_client.extract_participants(description)
         emails, no_emails = self.event_processor.process_participants(extracted_participants_raw)
+        # Extract start and end time
+        start_time = self.event_processor.process_start_time(parsed_event)
+        end_time = self.event_processor.process_end_time(description, start_time)
 
         # Build the event data and create the new event
-        event_data = self.event_processor.build_event_data(parsed_event, emails)
-        new_event = self.api_client.create_event(calendar_id=CALENDAR_ID, event_data=event_data)
+        event_data = self.event_processor.build_event_data(parsed_event, emails, start_time, end_time)
+        new_event = self.api_client.create_event(calendar_id="brandon.ch.thu@gmail.com", event_data=event_data)
         print("New Event:", new_event)
 
         # Format the event readable details and print
