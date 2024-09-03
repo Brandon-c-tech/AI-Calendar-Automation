@@ -18,6 +18,7 @@ The following Python packages are required to run the project:
 - `openai`
 - `python-dateutil`
 - `pytz`
+- `ics`
 
 ## Installation
 
