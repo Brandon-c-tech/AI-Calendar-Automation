@@ -3,11 +3,10 @@ import json
 from pydantic import BaseModel, EmailStr, ValidationError
 from openai import OpenAI
 from datetime import datetime
-import time
+import ics
 from dateutil import parser
 import pytz
 from typing import List, Dict
-from icalendar import Calendar, Event
 
 # API configuration parameters
 GRANT_ID = "<GRANT_ID>"
@@ -55,13 +54,15 @@ class CalendarEvent(BaseModel):
 
 # OpenAIClient class handles interactions with the OpenAI API, such as extracting event details and participants
 class OpenAIClient:
-    def __init__(self):
+    def __init__(self, timezone: str):
         self.client = OpenAI()
+        self.timezone = timezone
 
     def parse_event_description(self, description: str) -> Dict:
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S") #TBD
+        user_tz = pytz.timezone(self.timezone)
+        current_time = datetime.now(user_tz).strftime("%Y-%m-%d %H:%M:%S")
         # Parses the event description to extract structured event details using OpenAI
-        system_message = f"Extract the event details based on the following structure: title, description, when, location, and participants. The current date and time is {current_time}. Please ensure WHEN is a date or time description that can be converted into a standard date format. Missing parts fill with 'unknown'."
+        system_message = f"Extract the event details based on the following structure: title, description, when, location, and participants. The current date and time is {current_time}. Please ensure WHEN is a date or time description that can be converted into a standard date format. Put some details in the title. Missing parts fill with 'unknown'."
         completion = self.client.beta.chat.completions.parse(
             model="gpt-4o-mini",
             messages=[
@@ -90,10 +91,11 @@ class OpenAIClient:
             response_format={"type": "json_object"}
         )
         return response.choices[0].message.content
-
+    
     def extract_event_end_time(self, description: str) -> str:
-        pacific_tz = pytz.timezone('America/Los_Angeles')  # TBD to set user's timezone
-        current_time = datetime.now(pacific_tz).strftime("%Y-%m-%d %H:%M:%S")
+        user_tz = pytz.timezone(self.timezone)
+        current_time = datetime.now(user_tz).strftime("%Y-%m-%d %H:%M:%S")
+        # Extract the end time, or provide an end time based on the current time and duration
         prompt = f"""
             Extract the end time from the following event description. The current date and time is {current_time}. 
             If the end time is not explicitly mentioned, try to calculate it based on the current time and the duration mentioned in the description. 
@@ -116,16 +118,17 @@ class OpenAIClient:
 
 # CalendarEventProcessor class processes event data and manages participants
 class CalendarEventProcessor:
-    def __init__(self, api_client: NylasAPI, openai_client: OpenAIClient):
+    def __init__(self, api_client: NylasAPI, openai_client: OpenAIClient, timezone: str):
         self.api_client = api_client
         self.openai_client = openai_client
+        self.timezone = timezone
 
     def standardize_time(self, time_str: str) -> int:
-        # Converts a natural language time string into a standardized Unix timestamp in Pacific Time
+        # Converts a natural language time string into a standardized Unix timestamp in the specified timezone
         parsed_time = parser.parse(time_str, fuzzy=True)
-        pacific = pytz.timezone('America/Los_Angeles')
-        pacific_time = pacific.localize(parsed_time)
-        utc_time = pacific_time.astimezone(pytz.utc)
+        user_tz = pytz.timezone(self.timezone)
+        user_time = user_tz.localize(parsed_time)
+        utc_time = user_time.astimezone(pytz.utc)
         return int(utc_time.timestamp())
 
     def process_start_time(self, parsed_event: Dict):
@@ -139,7 +142,8 @@ class CalendarEventProcessor:
                 end_time_timestamp = self.standardize_time(end_time_str)
                 return end_time_timestamp
             except Exception as e:
-                raise ValueError(f"Error standardizing end time: {e}")
+                print(f"Warning: Error standardizing end time: {e}")
+                return start_time + 3600
         else:
             return start_time + 3600
 
@@ -181,52 +185,38 @@ class CalendarEventProcessor:
         }
         return event_data
 
-# Generate an ICS file using the structured data
 class ICSGenerator:
     def __init__(self):
-        self.calendar = Calendar()
+        self.calendar = ics.Calendar()
 
-    def generate_event(self, event_data: Dict) -> Event:
-        # Create an event and add it to the calendar
-        event = Event()
+    def add_event(self, event_data):
+        event = ics.Event()
+        event.name = event_data['title']
+        event.begin = datetime.fromtimestamp(event_data['when']['start_time'])
+        event.end = datetime.fromtimestamp(event_data['when']['end_time'])
+        event.description = event_data['description']
+        event.location = event_data['location']
+        
+        for participant in event_data['participants']:
+            event.add_attendee(f"{participant['name']} <{participant['email']}>")
+        
+        self.calendar.events.add(event)
 
-        event.add('summary', event_data['title'])
-        event.add('dtstart', self._parse_datetime(event_data['start_time']))
-        event.add('dtend', self._parse_datetime(event_data['end_time']))
-        event.add('location', event_data.get('location', ''))
-        event.add('description', event_data.get('description', ''))
+    def generate_ics_file(self, filename):
+        with open(filename, 'w') as f:
+            f.writelines(self.calendar)
+        print(f"ICS file generated: {filename}")
 
-        for attendee in event_data.get('attendees', []):
-            event.add('attendee', attendee)
-
-        # Validate event logic (example: start time should be before end time)
-        self._validate_event(event)
-
-        self.calendar.add_component(event)
-        return event
-
-    def _parse_datetime(self, date_str: str) -> datetime:
-        # Example parsing datetime with timezone, adjust according to your needs
-        return datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S').replace(tzinfo=pytz.utc)
-
-    def _validate_event(self, event: Event):
-        # Example of validating that the event start time is before the end time
-        dtstart = event.get('dtstart').dt
-        dtend = event.get('dtend').dt
-        if dtstart >= dtend:
-            raise ValueError("Event start time must be before end time")
-
-    def save_to_file(self, filename: str):
-        # Save the calendar to an .ics file
-        with open(filename, 'wb') as f:
-            f.write(self.calendar.to_ical())
+    def clear_calendar(self):
+        self.calendar = ics.Calendar()
 
 # CalendarManager class integrates NylasAPI and CalendarEventProcessor to manage the overall process
 class CalendarManager:
-    def __init__(self, api_client: NylasAPI, event_processor: CalendarEventProcessor):
+    def __init__(self, api_client: NylasAPI, event_processor: CalendarEventProcessor, timezone: str = 'America/Los_Angeles'):
         self.api_client = api_client
         self.event_processor = event_processor
-
+        self.timezone = timezone
+    
     def readable_event(self, event_data):
         # Extract relevant information
         title = event_data['data']['title']
@@ -238,7 +228,7 @@ class CalendarManager:
         # Format the output
         output = f"Title: {title}\n" \
                  f"Participants:\n" + "\n".join([f"  Name: {name}, Email: {email}" for name, email in participants]) + "\n" \
-                 f"Start Time (UTC): {start_time}\n" \ #TBD
+                 f"Start Time (UTC): {start_time}\n" \
                  f"Location: {location}\n" \
                  f"Description: {description}"
         
@@ -252,7 +242,18 @@ class CalendarManager:
         print("Events:", events)
 
         # Example event description for testing
-        description = "Hey, you free Aug 17, 2024, around 1? Thinking we could grab an hour, talking AI file management stuff. Wanna meet at Blue Bottle, you know, the one at 1385 4th St in San Francisco, CA 94158? Alice Wang's gonna join his mail -> test@user.io"
+        description = f"""
+            John Smith invites you and Sarah Johnson to join the group chat "TechInnovate-VCF"
+            John Smith: Hello everyone, let me introduce @Michael Brown, who is the founder of TechInnovate. They currently have two products, Nexus and Prism. @Sarah Johnson is a good friend of VCF. Michael usually stays in the Bay Area, but he might be in New York recently. Let's find a flexible time to connect!
+            Sarah Johnson: Thanks for the introduction, bro
+            Sarah Johnson: @Michael Brown, nice to meet you Michael🤝
+            Michael Brown: Hello, nice to meet you too. I'm currently based in the Bay Area!
+            Sarah Johnson: Great, are you available next week in the morning, your local time?
+            Michael Brown: Yes, I am. What day and time do you prefer? Could you give me your email? I'll have my "assistant" create a schedule😸
+            Sarah Johnson: How about Tuesday at 9:30 AM?
+            Sarah Johnson: Haha ok
+            Sarah Johnson: sjohnson@vcfinvest.com
+        """
         
         # Parse the event description using OpenAI
         parsed_event = self.event_processor.openai_client.parse_event_description(description)
@@ -274,8 +275,11 @@ class CalendarManager:
 
 # Usage
 if __name__ == "__main__":
+    timezone = "Asia/Shanghai"  # Beijing time
+    # timezone = "America/New_York"  # Eastern Time
+    # timezone = "America/Los_Angeles" # Pacific Time
     api_client = NylasAPI(grant_id=GRANT_ID, api_key=API_KEY)
-    openai_client = OpenAIClient()
-    event_processor = CalendarEventProcessor(api_client, openai_client)
-    manager = CalendarManager(api_client, event_processor)
+    openai_client = OpenAIClient(timezone)
+    event_processor = CalendarEventProcessor(api_client, openai_client, timezone)
+    manager = CalendarManager(api_client, event_processor, timezone)
     manager.run_test()
