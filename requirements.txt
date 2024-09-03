@@ -3,3 +3,4 @@ pydantic
 openai
 python-dateutil
 pytz
+ics
